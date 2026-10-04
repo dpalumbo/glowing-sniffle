@@ -1,0 +1,1262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Space Typing Adventure</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #070720;
+    --panel: rgba(24, 18, 64, 0.88);
+    --panel-edge: rgba(160, 140, 255, 0.35);
+    --text: #ffffff;
+    --muted: #c9c3ff;
+    --pink: #ff7eb6;
+    --gold: #ffd23f;
+    --good: #3ee08f;
+    --bad: #ff5c7a;
+    --box: rgba(255, 255, 255, 0.1);
+    --key: rgba(255, 255, 255, 0.14);
+    --key-hover: rgba(255, 255, 255, 0.26);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: 'Baloo 2', 'Comic Sans MS', 'Chalkboard SE', system-ui, sans-serif;
+    user-select: none; -webkit-user-select: none;
+  }
+  canvas#scene { position: fixed; inset: 0; display: block; }
+  button { font-family: inherit; cursor: pointer; border: 0; color: inherit; }
+
+  /* ---------- top bar ---------- */
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; z-index: 5; pointer-events: none;
+  }
+  #map {
+    flex: 1; display: flex; align-items: flex-start; justify-content: space-between; position: relative;
+    background: rgba(10, 8, 40, 0.6); border: 1px solid var(--panel-edge); border-radius: 16px;
+    padding: 6px 10px 2px; min-width: 0;
+  }
+  #map::before {
+    content: ''; position: absolute; left: 24px; right: 24px; top: 17px; height: 3px;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.35) 0 6px, transparent 6px 12px);
+  }
+  .stop { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 0; flex: 1; }
+  .stop .dot {
+    width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255,255,255,.5);
+    box-shadow: inset -4px -3px 0 rgba(0,0,0,.3);
+  }
+  .stop.dwarf .dot { width: 14px; height: 14px; margin: 3px 0; }
+  .stop.done .dot { border-color: var(--good); }
+  .stop.here .dot { border-color: var(--gold); box-shadow: 0 0 10px var(--gold), inset -4px -3px 0 rgba(0,0,0,.3); }
+  .stop .lbl { font-size: 11px; line-height: 1.1; color: var(--muted); white-space: nowrap; margin-top: 2px; }
+  .stop.here .lbl { color: var(--gold); font-weight: 800; }
+  .stop .tag { font-size: 9px; color: #9fe7ff; line-height: 1; }
+  .stop .me { position: absolute; top: -4px; font-size: 18px; transform: translateY(-2px); }
+  #starCount, #kbdToggle, #muteBtn {
+    pointer-events: auto; background: rgba(10, 8, 40, 0.6); border: 1px solid var(--panel-edge);
+    border-radius: 14px; padding: 6px 10px; font-size: 18px; font-weight: 800; white-space: nowrap;
+  }
+  #starCount { pointer-events: none; }
+
+  /* ---------- speech bubble ---------- */
+  #bubble {
+    position: fixed; left: 50%; top: 72px; transform: translateX(-50%); z-index: 4;
+    background: #fff; color: #3a2a7a; font-weight: 700; font-size: 18px; padding: 8px 16px;
+    border-radius: 18px; box-shadow: 0 6px 20px rgba(0,0,0,.3); max-width: 90vw; text-align: center;
+    transition: opacity .3s;
+  }
+  #bubble:empty { opacity: 0; }
+
+  /* ---------- spelling panel ---------- */
+  #panel {
+    position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); width: min(920px, 100%);
+    background: var(--panel); border: 1px solid var(--panel-edge); border-bottom: 0;
+    border-radius: 26px 26px 0 0; padding: 14px 16px 12px; z-index: 6;
+    backdrop-filter: blur(6px); transition: transform .45s cubic-bezier(.3,1.4,.5,1);
+  }
+  #panel.hidden { transform: translate(-50%, 110%); }
+  #row { display: flex; align-items: center; gap: 16px; }
+  #picture {
+    flex: none; width: 116px; height: 116px; border-radius: 22px; background: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 76px; line-height: 1;
+    box-shadow: 0 6px 0 rgba(0,0,0,.25); cursor: pointer;
+  }
+  #picture.pop { animation: pop .5s; }
+  #right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  #prompt { font-size: 18px; color: var(--muted); font-weight: 700; }
+  #prompt b { color: var(--gold); }
+  #boxes { display: flex; gap: 6px; justify-content: center; --n: 3; }
+  .box {
+    width: min(56px, calc((100vw - 200px) / var(--n))); aspect-ratio: 1; min-width: 26px;
+    border-radius: 12px; background: var(--box); border: 3px solid rgba(255,255,255,.35);
+    display: flex; align-items: center; justify-content: center; font-weight: 800;
+    font-size: min(38px, calc((100vw - 200px) / var(--n) * .7)); text-transform: uppercase;
+    transition: background .2s, border-color .2s;
+  }
+  .box.next { border-color: var(--gold); box-shadow: 0 0 12px rgba(255,210,63,.5); }
+  .box.filled { background: rgba(255,255,255,.2); }
+  .box.ghost { color: rgba(255,255,255,.6); }
+  .box.good, .box.fixed { background: var(--good); border-color: #b8ffd9; color: #053b20; }
+  .box.bad { background: var(--bad); border-color: #ffc2cd; animation: shake .4s; }
+  .box.win { animation: bounce .6s both; }
+  #buttons { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    background: var(--pink); color: #fff; font-weight: 800; font-size: 17px; padding: 6px 16px;
+    border-radius: 999px; box-shadow: 0 4px 0 #c24a83;
+  }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #c24a83; }
+  .btn.alt { background: #7a6cff; box-shadow: 0 4px 0 #4a3fc0; }
+  .btn.alt:active { box-shadow: 0 1px 0 #4a3fc0; }
+  .btn.big { font-size: 24px; padding: 10px 30px; }
+
+  #kbd { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  #kbd.hidden { display: none; }
+  .krow { display: flex; gap: 5px; width: 100%; justify-content: center; }
+  .key {
+    flex: 1; max-width: 58px; height: 46px; border-radius: 10px; background: var(--key);
+    font-size: 22px; font-weight: 800; box-shadow: 0 3px 0 rgba(0,0,0,.35);
+  }
+  .key:hover { background: var(--key-hover); }
+  .key:active, .key.press { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.35); background: var(--key-hover); }
+  .key.target { background: var(--gold); color: #3a2a00; animation: glow 1s ease-in-out infinite; }
+  @keyframes glow { 0%,100% { box-shadow: 0 3px 0 #b38600, 0 0 0 rgba(255,210,63,0) } 50% { box-shadow: 0 3px 0 #b38600, 0 0 18px rgba(255,210,63,.9) } }
+
+  /* ---------- cards / overlays ---------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+    padding: 16px; background: rgba(5, 4, 25, 0.35);
+  }
+  .overlay.hidden { display: none; }
+  .card {
+    background: var(--panel); border: 2px solid var(--panel-edge); border-radius: 28px; padding: 22px 26px;
+    max-width: 560px; width: 100%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    animation: pop .5s;
+  }
+  .card h1 { margin: 0; font-size: clamp(30px, 6vw, 46px); line-height: 1.05; color: var(--gold);
+    text-shadow: 0 4px 0 #b3571b; }
+  .card h2 { margin: 4px 0 6px; font-size: 30px; line-height: 1.1; }
+  .card p { font-size: 19px; line-height: 1.35; margin: 10px 0; color: #ece9ff; }
+  .card .sub { color: var(--muted); font-size: 17px; }
+  .badge {
+    display: inline-block; font-size: 14px; font-weight: 800; padding: 2px 12px; border-radius: 999px;
+    background: #2b7fff; color: #fff; letter-spacing: .5px; text-transform: uppercase;
+  }
+  .badge.dwarf { background: #00b3a4; }
+  .choices { display: flex; gap: 8px; justify-content: center; margin: 14px 0 18px; flex-wrap: wrap; }
+  .chip {
+    background: rgba(255,255,255,.12); border: 2px solid transparent; border-radius: 16px; padding: 8px 14px;
+    font-size: 17px; font-weight: 700;
+  }
+  .chip.on { border-color: var(--gold); background: rgba(255,210,63,.18); }
+  .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  #winScreen { overflow-y: auto; }
+  #winScreen .card { margin: auto; }
+  .video { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: #000; margin: 6px 0 4px; }
+  .video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  #unmuteBtn { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 2; }
+  .card a { color: #9fe7ff; }
+  .heroes { display: flex; gap: 10px; justify-content: center; margin: 4px 0 6px; }
+  .hero {
+    background: rgba(255,255,255,.08); border: 3px solid transparent; border-radius: 18px; padding: 4px 6px 6px;
+    display: flex; flex-direction: column; align-items: center; font-size: 18px; font-weight: 800; flex: 1; max-width: 130px;
+  }
+  .hero canvas { width: 90px; height: 100px; }
+  .hero.on { border-color: var(--gold); background: rgba(255,210,63,.16); }
+  #arrivePlanet { width: 150px; height: 150px; display: block; margin: 0 auto; }
+
+  @keyframes pop { 0% { transform: scale(.6); opacity: 0 } 70% { transform: scale(1.05); opacity: 1 } 100% { transform: scale(1) } }
+  @keyframes shake { 0%,100% { transform: translateX(0) } 25% { transform: translateX(-6px) } 75% { transform: translateX(6px) } }
+  @keyframes bounce { 0%,100% { transform: translateY(0) } 40% { transform: translateY(-14px) } }
+
+  @media (max-width: 640px) {
+    #picture { width: 84px; height: 84px; font-size: 54px; border-radius: 18px; }
+    .stop .lbl { display: none; font-size: 10px; }
+    .stop.here .lbl { display: block; }
+    .stop .tag { display: none; }
+    #bubble { font-size: 15px; top: 66px; }
+    .key { height: 42px; font-size: 18px; }
+    #prompt { font-size: 15px; }
+    .box { width: min(48px, calc((100vw - 130px) / var(--n))); font-size: min(32px, calc((100vw - 130px) / var(--n) * .7)); }
+  }
+  @media (max-height: 640px) {
+    #picture { width: 80px; height: 80px; font-size: 52px; }
+    .key { height: 36px; }
+    #kbd { margin-top: 8px; gap: 4px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="topbar">
+  <div id="map"></div>
+  <div id="starCount">⭐ 0</div>
+  <button id="kbdToggle" title="Show or hide the on-screen keyboard">⌨️</button>
+  <button id="muteBtn" title="Sound effects on/off">🔔</button>
+</div>
+
+<div id="bubble"></div>
+
+<div id="panel" class="hidden">
+  <div id="row">
+    <div id="picture" title="Hear the word again">🐱</div>
+    <div id="right">
+      <div id="prompt">Type the word to fly to <b>Mars</b>!</div>
+      <div id="boxes"></div>
+      <div id="buttons">
+        <button class="btn" id="hearBtn">🔊 Hear it</button>
+      </div>
+    </div>
+  </div>
+  <div id="kbd"></div>
+</div>
+
+<div class="overlay" id="startScreen">
+  <div class="card">
+    <h1><span class="heroName">Layla</span>'s Space Typing Adventure</h1>
+    <p>Who's flying today?</p>
+    <div class="heroes" id="heroes">
+      <button class="hero on" data-hero="layla"><canvas width="180" height="200"></canvas><span>Layla</span></button>
+      <button class="hero" data-hero="theo"><canvas width="180" height="200"></canvas><span>Theo</span></button>
+      <button class="hero" data-hero="matteo"><canvas width="180" height="200"></canvas><span>Matteo</span></button>
+    </div>
+    <p>Help <span class="heroName">Layla</span> fly across the solar system! Look at the picture, listen to the word, and type the letters to zoom to the next planet.</p>
+    <p class="sub">Can you make it all the way to the dwarf planet <b>Makemake</b>? 🚀</p>
+    <div class="choices" id="levels">
+      <button class="chip" data-level="easy">🐣 Easy</button>
+      <button class="chip on" data-level="normal">🚀 Normal</button>
+      <button class="chip" data-level="hard">🌟 Hard</button>
+    </div>
+    <div class="actions">
+      <button class="btn big" id="startBtn">Blast off!</button>
+      <button class="btn big alt hidden" id="continueBtn" style="display:none">Keep going</button>
+    </div>
+    <p class="sub" id="noSpeech" style="display:none">Your browser can't read words out loud, so ask a grown-up to read them.</p>
+  </div>
+</div>
+
+<div class="overlay hidden" id="arriveScreen">
+  <div class="card">
+    <canvas id="arrivePlanet" width="300" height="300"></canvas>
+    <span class="badge" id="arriveBadge">Planet</span>
+    <h2 id="arriveName">Mars</h2>
+    <p id="arriveFact"></p>
+    <p class="sub" id="arriveNext">🚀 Next stop: Ceres…</p>
+  </div>
+</div>
+
+<div class="overlay hidden" id="winScreen">
+  <div class="card">
+    <h1>You made it to Makemake!</h1>
+    <p><span class="heroName">Layla</span> flew past 9 worlds and planted <span class="heroPronoun">her</span> flag on a dwarf planet way out past Pluto. Amazing typing!</p>
+    <p style="font-size:28px;font-weight:800" id="winStars">⭐ 0</p>
+    <p class="sub">🎬 Your reward — enjoy the show!</p>
+    <div id="videoWrap">
+      <div class="video"><div id="rewardVideo"></div>
+        <button class="btn big" id="unmuteBtn" style="display:none">🔊 Tap for sound</button></div>
+      <p class="sub" style="font-size:14px">Video not playing? <a href="https://www.youtube.com/watch?v=4tw_RiQp6H8" target="_blank" rel="noopener">Watch it on YouTube</a></p>
+    </div>
+    <div id="videoFile" style="display:none">
+      <p><a class="btn big" id="watchBtn" href="https://www.youtube.com/watch?v=4tw_RiQp6H8" target="_blank" rel="noopener" style="display:inline-block;text-decoration:none;color:#fff">▶ Watch your reward video</a></p>
+      <p class="sub" style="font-size:14px">Tip: open the game with <b>Play.command</b> and the video plays right here.</p>
+    </div>
+    <div class="actions">
+      <button class="btn big" id="againBtn">Fly again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+
+/* =========================================================
+   DATA
+   ========================================================= */
+const WORDS = {
+  1: [['cat','🐱'],['dog','🐶'],['sun','☀️'],['hat','🎩'],['pig','🐷'],['cow','🐮'],['bus','🚌'],['bed','🛏️'],
+      ['egg','🥚'],['fox','🦊'],['owl','🦉'],['bee','🐝'],['ant','🐜'],['car','🚗'],['key','🔑'],['box','📦'],
+      ['bat','🦇'],['pie','🥧'],['web','🕸️'],['map','🗺️'],['bug','🐛'],['van','🚐'],['hen','🐔'],['cup','☕']],
+  2: [['star','⭐'],['moon','🌙'],['fish','🐟'],['frog','🐸'],['cake','🎂'],['duck','🦆'],['bear','🐻'],['lion','🦁'],
+      ['ship','🚢'],['tree','🌳'],['boat','⛵'],['bell','🔔'],['milk','🥛'],['kite','🪁'],['rose','🌹'],['corn','🌽'],
+      ['shoe','👟'],['sock','🧦'],['ring','💍'],['drum','🥁'],['bird','🐦'],['crab','🦀'],['book','📖'],['ball','⚽'],
+      ['baby','👶'],['door','🚪']],
+  3: [['apple','🍎'],['horse','🐴'],['house','🏠'],['robot','🤖'],['snake','🐍'],['tiger','🐯'],['zebra','🦓'],
+      ['heart','❤️'],['pizza','🍕'],['train','🚆'],['cloud','☁️'],['whale','🐳'],['sheep','🐑'],['mouse','🐭'],
+      ['truck','🚚'],['bread','🍞'],['crown','👑'],['earth','🌍'],['comet','☄️'],['shell','🐚'],['grape','🍇'],
+      ['lemon','🍋'],['piano','🎹']],
+  4: [['rocket','🚀'],['planet','🪐'],['flower','🌸'],['rabbit','🐰'],['turtle','🐢'],['banana','🍌'],['monkey','🐵'],
+      ['dragon','🐉'],['castle','🏰'],['rainbow','🌈'],['unicorn','🦄'],['penguin','🐧'],['octopus','🐙'],
+      ['dolphin','🐬'],['balloon','🎈'],['cookie','🍪'],['spider','🕷️'],['guitar','🎸'],['giraffe','🦒'],
+      ['telescope','🔭'],['astronaut','🧑‍🚀']]
+};
+const TIERS = {
+  easy:   [1,1,1,2,2,2,3,3,3],
+  normal: [1,1,2,2,3,3,3,4,4],
+  hard:   [2,2,3,3,4,4,4,4,4]
+};
+const WPL = 1; // words per leg
+const REWARD_VIDEO = '4tw_RiQp6H8'; // YouTube video shown on reaching Makemake
+
+const BODIES = {
+  sun:     { name:'The Sun', r:34 },
+  mercury: { name:'Mercury', r:5 },
+  venus:   { name:'Venus', r:8 },
+  earth:   { name:'Earth', r:10, dot:'#3b82f6', type:'Planet',
+             fact:"Earth is our home! It's the only planet we know of with oceans, trees and people." },
+  mars:    { name:'Mars', r:7, dot:'#e2603a', type:'Planet',
+             fact:'Mars is the red planet. It has the tallest volcano in the whole solar system, called Olympus Mons!' },
+  ceres:   { name:'Ceres', r:4.5, dot:'#9a9a9a', type:'Dwarf planet', dwarf:true,
+             fact:'Ceres is a dwarf planet! It lives in the asteroid belt between Mars and Jupiter, and it has shiny white salt spots.' },
+  jupiter: { name:'Jupiter', r:20, dot:'#d9a066', type:'Planet',
+             fact:'Jupiter is the biggest planet of all. Its Great Red Spot is a giant storm that is bigger than Earth!' },
+  saturn:  { name:'Saturn', r:16, dot:'#e8cf8a', type:'Planet', ring:2.3,
+             fact:'Saturn has beautiful rings made of chunks of ice and rock. Some are as small as sand, some as big as a house!' },
+  uranus:  { name:'Uranus', r:12, dot:'#8fe3e8', type:'Planet', ring:1.7,
+             fact:'Uranus spins on its side, like a ball rolling around the Sun. It is an icy blue-green giant.' },
+  neptune: { name:'Neptune', r:12, dot:'#3d5bff', type:'Planet',
+             fact:'Neptune is the windiest planet. Its winds blow faster than a jet plane!' },
+  pluto:   { name:'Pluto', r:5, dot:'#d9b48f', type:'Dwarf planet', dwarf:true,
+             fact:'Pluto is a dwarf planet with a giant heart shape on it, made of frozen ice!' },
+  haumea:  { name:'Haumea', r:4.5, dot:'#e9eef5', type:'Dwarf planet', dwarf:true, wide:1.6,
+             fact:'Haumea is a dwarf planet shaped like an egg, because it spins super fast. A whole day there is only 4 hours!' },
+  makemake:{ name:'Makemake', r:5.5, dot:'#c4704f', type:'Dwarf planet', dwarf:true,
+             fact:'Makemake is a dwarf planet far, far away, out past Pluto. It is so cold that its ground is covered in frozen ice!' }
+};
+const JOURNEY = ['earth','mars','ceres','jupiter','saturn','uranus','neptune','pluto','haumea','makemake'];
+const LEGS = JOURNEY.length - 1;
+const INNER = [['sun',-2.4],['mercury',-1.5],['venus',-0.8]];
+
+const PRAISE = ['Great job!','Super typing!','You got it!','Awesome!','Brilliant!','Woohoo!','Way to go!','Fantastic!','Out of this world!'];
+
+/* =========================================================
+   STATE + SAVE
+   ========================================================= */
+const SAVE_KEY = 'layla-space-spelling-v1';
+const state = { leg:0, wordIdx:0, level:'normal', stars:0, mode:'start', won:false, hero:'layla' };
+const used = new Set();
+let cur = null; // current word round
+
+function save() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ leg:state.leg, level:state.level, stars:state.stars, hero:state.hero })); } catch (e) {}
+}
+function load() {
+  try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; }
+}
+function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+
+/* =========================================================
+   SOUND
+   ========================================================= */
+let actx = null, muted = false;
+function audio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (actx && actx.state === 'suspended') actx.resume();
+  return actx;
+}
+function tone(freq, dur, type = 'sine', when = 0, vol = 0.15, slideTo = null) {
+  const a = audio(); if (!a || muted) return;
+  const t0 = a.currentTime + when;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t0);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(a.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+}
+// soft bell: a sine with a quick attack and long ring, plus a quieter overtone for shimmer
+function chime(freq, when = 0, vol = 0.13) {
+  const a = audio(); if (!a || muted) return;
+  const t0 = a.currentTime + when;
+  [[1, vol, 0.7], [2.01, vol * 0.35, 0.35], [3.98, vol * 0.12, 0.18]].forEach(([mult, v, dur]) => {
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(freq * mult, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(v, t0 + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(a.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+  });
+}
+// each correct letter climbs a major pentatonic scale, so typing a word plays a little tune
+const SCALE = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.51, 1567.98, 1760];
+const sfx = {
+  key:   i => {
+    const f = SCALE[Math.min(i, SCALE.length - 1)];
+    chime(f);
+    chime(f * 2, 0.07, 0.035); // tiny sparkle echo an octave up
+  },
+  good:  () => [1046.5, 1318.51, 1567.98, 2093].forEach((f, i) => chime(f, 0.12 + i * 0.08, 0.11)),
+  bad:   () => { tone(300, 0.18, 'square', 0, 0.06); tone(220, 0.25, 'square', 0.16, 0.06); },
+  whoosh:() => tone(200, 0.9, 'sawtooth', 0, 0.05, 900),
+  arrive:() => [392, 523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.3, 'sine', i * 0.1, 0.12)),
+  win:   () => [523, 659, 784, 1047, 784, 1047, 1319, 1568].forEach((f, i) => tone(f, 0.35, 'triangle', i * 0.13, 0.13))
+};
+
+/* ---- voice ----
+   Every line is pre-recorded in audio/<id>.mp3 (made by tools/make_voice.py).
+   If a clip is missing or can't play, fall back to the browser's own voice. */
+const canSpeak = 'speechSynthesis' in window;
+let voice = null;
+function pickVoice() {
+  if (!canSpeak) return;
+  const vs = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang));
+  const score = v => (/premium|natural|neural/i.test(v.name) ? 40 : 0) + (/enhanced/i.test(v.name) ? 30 : 0)
+    + (/Google US English|Ava|Zoe|Samantha|Aria|Jenny/i.test(v.name) ? 15 : 0) + (/^en[-_]US/i.test(v.lang) ? 5 : 0);
+  voice = vs.sort((a, b) => score(b) - score(a))[0] || null;
+}
+if (canSpeak) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function ttsLine(text, rate) {
+  return new Promise(res => {
+    if (!canSpeak) return res();
+    const u = new SpeechSynthesisUtterance(text);
+    if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-US';
+    u.rate = rate; u.pitch = 1.1; u.onend = u.onerror = res;
+    speechSynthesis.speak(u);
+  });
+}
+
+let talkId = 0, clip = null;
+function hush() {
+  talkId++;
+  if (clip) { clip.pause(); clip = null; }
+  if (canSpeak) speechSynthesis.cancel();
+}
+function playLine(id, text, rate, token) {
+  return new Promise(res => {
+    const a = new Audio(`audio/${id}.mp3`);
+    let done = false, fellBack = false;
+    const finish = () => { if (!done) { done = true; res(); } };
+    // the error event and the rejected play() promise can both fire; only fall back once
+    const fallback = () => {
+      if (fellBack || done) return;
+      fellBack = true;
+      if (token === talkId) ttsLine(text, rate).then(finish); else finish();
+    };
+    a.onended = finish;
+    a.onerror = fallback;
+    clip = a;
+    a.play().catch(fallback);
+  });
+}
+// talk([[clipId, fallbackText], ...]) plays lines one after another, cutting off anything already playing
+async function talk(lines, rate = 0.9) {
+  hush();
+  const token = talkId;
+  for (const [id, text] of lines) {
+    if (token !== talkId) return;
+    await playLine(id, text, rate, token);
+  }
+}
+const LETTER_NAMES = { a:'ay', b:'bee', c:'see', d:'dee', e:'ee', f:'eff', g:'jee', h:'aitch', i:'eye', j:'jay', k:'kay', l:'ell', m:'em',
+  n:'en', o:'oh', p:'pee', q:'cue', r:'are', s:'ess', t:'tee', u:'you', v:'vee', w:'double you', x:'ex', y:'why', z:'zee' };
+const L = {
+  word:    w => [`word_${w}`, w],
+  ask:     w => [`type_${w}`, `Can you type... ${w}?`],
+  letter:  c => [`letter_${c}`, `Look for the ${LETTER_NAMES[c]} key!`], // spelled out so voices don't say "capital U"
+  next:    k => [`next_${k}`, `Next stop, ${BODIES[k].name}!`],
+  welcome: k => [`welcome_${k}`, `Welcome to ${BODIES[k].name}! ${BODIES[k].fact}`],
+  praise:  i => [`praise_${i}`, PRAISE[i]]
+};
+
+/* =========================================================
+   CANVAS SCENE
+   ========================================================= */
+const canvas = $('#scene'), ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+}
+addEventListener('resize', resize); resize();
+
+// seeded random so belts look the same every time
+let seed = 7;
+const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const STARS = Array.from({ length: 260 }, () => ({ x: rnd(), y: rnd(), s: rnd() * 1.6 + 0.3, f: [0.04, 0.12, 0.25][Math.floor(rnd() * 3)], p: rnd() * 6.28 }));
+const ASTEROIDS = Array.from({ length: 70 }, () => ({ at: 2 + (rnd() - 0.5) * 0.85, y: (rnd() - 0.5) * 0.9, s: rnd() * 1.2 + 0.5, rot: rnd() * 6.28, k: Math.floor(rnd() * 3) }));
+const KUIPER = Array.from({ length: 110 }, () => ({ at: 6.6 + rnd() * 3.0, y: (rnd() - 0.5) * 0.95, s: rnd() * 0.8 + 0.3, rot: rnd() * 6.28 }));
+const NEBULAE = Array.from({ length: 6 }, (_, i) => ({ at: i * 1.8 + rnd(), y: rnd(), r: 0.5 + rnd() * 0.6, hue: [280, 200, 320, 240, 180, 300][i] }));
+
+let D = 500, u = 4, sceneTop = 70, midY = null, camX = 0, T = 0;
+const pilot = { x: 0, y: 0, tilt: 0, thrust: 0 };
+const trail = [], confetti = [];
+
+function layout() {
+  D = W < 640 ? W * 0.8 : Math.max(W * 0.72, 420);
+  sceneTop = 64;
+  const panel = $('#panel');
+  const bottom = panel.classList.contains('hidden') ? H : panel.getBoundingClientRect().top;
+  const sceneH = Math.max(160, bottom - sceneTop);
+  u = Math.max(2.4, Math.min(7, Math.min(W, sceneH * 1.1) / 100));
+  const targetMid = sceneTop + sceneH * 0.55;
+  midY = midY == null ? targetMid : midY;
+  return { targetMid, sceneH };
+}
+
+function pilotTarget() {
+  if (state.won) {
+    const p = BODIES.makemake;
+    return { x: LEGS * D, y: midY - p.r * u - 22 * u * 0.28 * 1.25 };
+  }
+  const L = Math.min(state.leg, LEGS - 1);
+  const a = BODIES[JOURNEY[L]], b = BODIES[JOURNEY[L + 1]];
+  const pad = 14 * u;
+  const x0 = L * D + a.r * u * (a.wide || 1) + pad;
+  const x1 = (L + 1) * D - b.r * u * (b.wide || 1) - pad;
+  const k = Math.min(state.wordIdx / WPL, 1);
+  return { x: x0 + (x1 - x0) * k, y: midY - 16 * u };
+}
+
+/* ---------- drawing helpers ---------- */
+function rr(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+function ball(c, x, y, r, light, dark) {
+  const g = c.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r);
+  g.addColorStop(0, light); g.addColorStop(1, dark);
+  c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 6.283); c.fill();
+}
+function shade(c, x, y, r, rx = r, ry = r) {
+  // sunlight comes from the left
+  const g = c.createLinearGradient(x - rx, y, x + rx, y);
+  g.addColorStop(0, 'rgba(255,255,255,0.12)'); g.addColorStop(0.5, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,30,0.55)');
+  c.fillStyle = g; c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, 6.283); c.fill();
+}
+function clipCircle(c, x, y, r) { c.save(); c.beginPath(); c.arc(x, y, r, 0, 6.283); c.clip(); }
+
+function drawPlanet(c, key, x, y, r, t) {
+  c.save();
+  switch (key) {
+    case 'sun': {
+      const g = c.createRadialGradient(x, y, r * 0.2, x, y, r * 2.6);
+      g.addColorStop(0, 'rgba(255,230,120,0.9)'); g.addColorStop(0.4, 'rgba(255,150,40,0.35)'); g.addColorStop(1, 'rgba(255,100,0,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(x, y, r * 2.6, 0, 6.283); c.fill();
+      ball(c, x, y, r, '#fff7b0', '#ff9a1f');
+      break;
+    }
+    case 'mercury':
+      ball(c, x, y, r, '#c9c4bd', '#6e6862');
+      c.fillStyle = 'rgba(0,0,0,0.18)';
+      [[-.3,-.2,.25],[.3,.3,.2],[.1,-.45,.15]].forEach(([a, b, s]) => { c.beginPath(); c.arc(x + a * r, y + b * r, s * r, 0, 6.283); c.fill(); });
+      shade(c, x, y, r); break;
+    case 'venus':
+      ball(c, x, y, r, '#fff1c4', '#d9a24a'); shade(c, x, y, r); break;
+    case 'earth': {
+      ball(c, x, y, r, '#6fb8ff', '#1747a6');
+      clipCircle(c, x, y, r);
+      c.fillStyle = '#3fbf5f';
+      const sp = (t * 0.08) % 2;
+      [[-0.5, -0.2, 0.45, 0.32], [0.25, 0.25, 0.35, 0.5], [0.55, -0.45, 0.3, 0.2], [-0.2, 0.6, 0.3, 0.18]].forEach(([a, b, w, h]) => {
+        for (const off of [0, -2, 2]) { c.beginPath(); c.ellipse(x + (a + sp + off - 1) * r, y + b * r, w * r, h * r, 0.4, 0, 6.283); c.fill(); }
+      });
+      c.fillStyle = 'rgba(255,255,255,0.75)';
+      c.beginPath(); c.ellipse(x, y - r * 0.88, r * 0.55, r * 0.18, 0, 0, 6.283); c.fill();
+      c.beginPath(); c.ellipse(x - r * 0.1, y + r * 0.1, r * 0.4, r * 0.07, -0.2, 0, 6.283); c.fill();
+      c.restore();
+      shade(c, x, y, r);
+      c.strokeStyle = 'rgba(120,190,255,0.5)'; c.lineWidth = Math.max(1, r * 0.08);
+      c.beginPath(); c.arc(x, y, r * 1.04, 0, 6.283); c.stroke();
+      break;
+    }
+    case 'mars':
+      ball(c, x, y, r, '#ff9a6b', '#9c3417');
+      clipCircle(c, x, y, r);
+      c.fillStyle = 'rgba(90,20,5,0.3)';
+      c.beginPath(); c.ellipse(x - r * 0.2, y + r * 0.2, r * 0.5, r * 0.2, 0.3, 0, 6.283); c.fill();
+      c.beginPath(); c.ellipse(x + r * 0.4, y - r * 0.3, r * 0.25, r * 0.15, 0, 0, 6.283); c.fill();
+      c.fillStyle = '#fff'; c.beginPath(); c.ellipse(x, y - r * 0.95, r * 0.45, r * 0.2, 0, 0, 6.283); c.fill();
+      c.restore(); shade(c, x, y, r); break;
+    case 'ceres':
+      ball(c, x, y, r, '#b9b6b2', '#55524f');
+      c.fillStyle = 'rgba(0,0,0,0.2)';
+      c.beginPath(); c.arc(x - r * 0.35, y + r * 0.3, r * 0.22, 0, 6.283); c.fill();
+      c.fillStyle = '#fff'; c.beginPath(); c.arc(x + r * 0.15, y - r * 0.15, r * 0.12, 0, 6.283); c.fill();
+      c.beginPath(); c.arc(x + r * 0.3, y - r * 0.05, r * 0.06, 0, 6.283); c.fill();
+      shade(c, x, y, r); break;
+    case 'jupiter': {
+      ball(c, x, y, r, '#f3d8b0', '#b07a45');
+      clipCircle(c, x, y, r);
+      const bands = ['#e9c99a', '#c48a55', '#f1dcbc', '#b67748', '#ead0a6', '#c98f5c', '#f3e0c2', '#b27446'];
+      bands.forEach((col, i) => { c.fillStyle = col; c.globalAlpha = 0.75; c.fillRect(x - r, y - r + i * (r * 2 / bands.length), r * 2, r * 2 / bands.length + 1); });
+      c.globalAlpha = 1;
+      c.fillStyle = '#c4492b'; c.beginPath(); c.ellipse(x + r * 0.3, y + r * 0.35, r * 0.24, r * 0.13, 0, 0, 6.283); c.fill();
+      c.restore(); shade(c, x, y, r); break;
+    }
+    case 'saturn': {
+      const ring = (front) => {
+        c.save(); c.translate(x, y); c.rotate(-0.35);
+        c.beginPath();
+        c.ellipse(0, 0, r * 2.3, r * 0.6, 0, front ? 0 : Math.PI, front ? Math.PI : 6.283);
+        c.lineWidth = r * 0.35; c.strokeStyle = 'rgba(232,207,138,0.85)'; c.stroke();
+        c.beginPath();
+        c.ellipse(0, 0, r * 1.75, r * 0.45, 0, front ? 0 : Math.PI, front ? Math.PI : 6.283);
+        c.lineWidth = r * 0.18; c.strokeStyle = 'rgba(190,160,100,0.8)'; c.stroke();
+        c.restore();
+      };
+      ring(false);
+      ball(c, x, y, r, '#fbe7b0', '#c39a4f');
+      clipCircle(c, x, y, r);
+      ['#f3dc9e', '#d9b56f', '#f7e5b4', '#cfa862', '#f2dba0'].forEach((col, i) => { c.fillStyle = col; c.globalAlpha = 0.6; c.fillRect(x - r, y - r + i * (r * 0.4), r * 2, r * 0.4 + 1); });
+      c.globalAlpha = 1; c.restore(); shade(c, x, y, r);
+      ring(true);
+      break;
+    }
+    case 'uranus': {
+      const ring = (front) => {
+        c.save(); c.translate(x, y); c.rotate(1.35);
+        c.beginPath(); c.ellipse(0, 0, r * 1.7, r * 0.35, 0, front ? 0 : Math.PI, front ? Math.PI : 6.283);
+        c.lineWidth = Math.max(1, r * 0.06); c.strokeStyle = 'rgba(200,250,255,0.6)'; c.stroke(); c.restore();
+      };
+      ring(false); ball(c, x, y, r, '#d4fbff', '#3fb3c4'); shade(c, x, y, r); ring(true);
+      break;
+    }
+    case 'neptune':
+      ball(c, x, y, r, '#7aa0ff', '#1b2fa8');
+      clipCircle(c, x, y, r);
+      c.fillStyle = 'rgba(10,20,90,0.5)'; c.beginPath(); c.ellipse(x - r * 0.2, y + r * 0.1, r * 0.25, r * 0.14, 0, 0, 6.283); c.fill();
+      c.fillStyle = 'rgba(255,255,255,0.4)'; c.fillRect(x - r, y - r * 0.4, r * 2, r * 0.06); c.fillRect(x - r, y + r * 0.45, r * 2, r * 0.05);
+      c.restore(); shade(c, x, y, r); break;
+    case 'pluto': {
+      ball(c, x, y, r, '#ecd2b4', '#8f6748');
+      // heart (Tombaugh Regio)
+      const hx = x + r * 0.05, hy = y + r * 0.05, s = r * 0.42;
+      c.fillStyle = 'rgba(255,248,235,0.92)';
+      c.beginPath();
+      c.moveTo(hx, hy + s * 0.9);
+      c.bezierCurveTo(hx - s * 1.4, hy, hx - s * 0.7, hy - s * 1.1, hx, hy - s * 0.35);
+      c.bezierCurveTo(hx + s * 0.7, hy - s * 1.1, hx + s * 1.4, hy, hx, hy + s * 0.9);
+      c.fill();
+      shade(c, x, y, r); break;
+    }
+    case 'haumea': {
+      const rx = r * 1.6, ry = r * 0.85;
+      c.save(); c.translate(x, y); c.rotate(-0.25 + Math.sin(t * 2) * 0.05);
+      c.beginPath(); c.ellipse(0, 0, rx * 1.6, ry * 0.9, 0, Math.PI, 6.283);
+      c.strokeStyle = 'rgba(220,230,255,0.35)'; c.lineWidth = Math.max(1, r * 0.08); c.stroke();
+      const g = c.createRadialGradient(-rx * 0.4, -ry * 0.4, 1, 0, 0, rx);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#8e9bb0');
+      c.fillStyle = g; c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, 6.283); c.fill();
+      c.fillStyle = 'rgba(150,40,60,0.35)'; c.beginPath(); c.ellipse(rx * 0.25, ry * 0.1, rx * 0.2, ry * 0.25, 0, 0, 6.283); c.fill();
+      shade(c, 0, 0, r, rx, ry);
+      c.beginPath(); c.ellipse(0, 0, rx * 1.6, ry * 0.9, 0, 0, Math.PI);
+      c.strokeStyle = 'rgba(220,230,255,0.45)'; c.stroke();
+      c.restore(); break;
+    }
+    case 'makemake':
+      ball(c, x, y, r, '#f0a37e', '#7a3520');
+      c.fillStyle = 'rgba(255,240,230,0.5)';
+      c.beginPath(); c.ellipse(x - r * 0.3, y - r * 0.4, r * 0.3, r * 0.15, 0.3, 0, 6.283); c.fill();
+      c.beginPath(); c.ellipse(x + r * 0.2, y + r * 0.35, r * 0.25, r * 0.12, -0.3, 0, 6.283); c.fill();
+      shade(c, x, y, r); break;
+  }
+  c.restore();
+}
+
+function drawFlag(x, y, s) {
+  ctx.save(); ctx.translate(x, y);
+  ctx.strokeStyle = '#eee'; ctx.lineWidth = Math.max(2, s * 0.08);
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -s * 1.6); ctx.stroke();
+  const wave = Math.sin(T * 5) * s * 0.08;
+  ctx.fillStyle = '#ff7eb6';
+  ctx.beginPath(); ctx.moveTo(0, -s * 1.6); ctx.quadraticCurveTo(s * 0.5, -s * 1.6 + wave, s, -s * 1.45);
+  ctx.lineTo(s, -s * 1.0); ctx.quadraticCurveTo(s * 0.5, -s * 1.1 - wave, 0, -s * 1.0); ctx.fill();
+  ctx.fillStyle = '#ffd23f'; ctx.font = `${s * 0.42}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('★', s * 0.5, -s * 1.27);
+  ctx.restore();
+}
+
+/* ---------- the astronaut kids ---------- */
+const HEROES = {
+  layla:  { name: 'Layla',  hair: '#ffd23f', hairEdge: '#e0a417', suit: '#ff7eb6', suitDark: '#e85c97', legs: '#ff6aa9', badge: '#ffd23f', style: 'pigtails', pronoun: 'her' },
+  theo:   { name: 'Theo',   hair: '#b9824f', hairEdge: '#8a5a32', suit: '#4da3ff', suitDark: '#2f7fd6', legs: '#3f93f0', badge: '#ffd23f', style: 'short', pronoun: 'his' },
+  matteo: { name: 'Matteo', hair: '#3d2517', hairEdge: '#1f120a', suit: '#3ecf8e', suitDark: '#22a76c', legs: '#33bf80', badge: '#fff27a', style: 'bangs', pronoun: 'his' }
+};
+
+function drawHair(c, h) {
+  c.fillStyle = h.hair; c.strokeStyle = h.hairEdge; c.lineWidth = 1.2;
+  c.beginPath();
+  if (h.style === 'pigtails') {
+    c.moveTo(-13.5, -19);
+    c.quadraticCurveTo(-15, -37, 0, -36.5);
+    c.quadraticCurveTo(15, -37, 13.5, -19);
+    c.quadraticCurveTo(11, -27, 6, -27);
+    c.quadraticCurveTo(3, -30, -1, -27);
+    c.quadraticCurveTo(-5, -30, -8, -26.5);
+    c.quadraticCurveTo(-12, -26, -13.5, -19);
+  } else if (h.style === 'short') {
+    // tousled, side-swept fringe with a little cowlick on top
+    c.moveTo(-13.5, -20);
+    c.quadraticCurveTo(-15, -36, -2, -36.5);
+    c.quadraticCurveTo(2, -41, 7, -40);
+    c.quadraticCurveTo(4, -38.5, 4, -36.5);
+    c.quadraticCurveTo(15, -35, 13.5, -20);
+    c.quadraticCurveTo(12, -27, 8, -28.5);
+    c.quadraticCurveTo(2, -26, -3, -29.5);
+    c.quadraticCurveTo(-7, -26, -10, -28);
+    c.quadraticCurveTo(-12, -25, -13.5, -20);
+  } else {
+    // thick straight bangs across the forehead
+    c.moveTo(-14, -16);
+    c.quadraticCurveTo(-16.5, -38, 0, -38);
+    c.quadraticCurveTo(16.5, -38, 14, -16);
+    c.lineTo(12.5, -16);
+    c.lineTo(12.5, -24.5);
+    for (let i = 0; i <= 10; i++) c.lineTo(12.5 - i * 2.5, i % 2 ? -23.5 : -25.5);
+    c.lineTo(-12.5, -16);
+  }
+  c.closePath(); c.fill(); c.stroke();
+}
+
+function drawHero(c, heroKey, x, y, s, thrust, tilt) {
+  const h = HEROES[heroKey] || HEROES.layla;
+  c.save(); c.translate(x, y); c.rotate(tilt); c.scale(s, s);
+  // jetpack flame
+  const fl = 8 + thrust * 22 + Math.sin(T * 40) * 3;
+  const fg = c.createLinearGradient(0, 20, 0, 20 + fl);
+  fg.addColorStop(0, '#fff6a8'); fg.addColorStop(0.4, '#ffae2b'); fg.addColorStop(1, 'rgba(255,60,0,0)');
+  c.fillStyle = fg;
+  c.beginPath(); c.moveTo(-24, 20); c.quadraticCurveTo(-19 - thrust * 6, 20 + fl, -20 - thrust * 10, 20 + fl);
+  c.quadraticCurveTo(-17, 22 + fl * 0.6, -14, 20); c.closePath(); c.fill();
+  // jetpack
+  c.fillStyle = '#c4cee0'; c.strokeStyle = '#6d7891'; c.lineWidth = 1.5;
+  rr(c, -26, -6, 13, 27, 5); c.fill(); c.stroke();
+  c.fillStyle = '#8b96ae'; rr(c, -24, 19, 9, 4, 2); c.fill();
+  c.fillStyle = h.suit; c.beginPath(); c.arc(-19.5, 2, 2.5, 0, 6.283); c.fill();
+  // legs (swing)
+  const sw = Math.sin(T * 3) * 0.18;
+  [[-6, sw], [2, -sw]].forEach(([lx, a]) => {
+    c.save(); c.translate(lx + 3, 18); c.rotate(a);
+    c.fillStyle = h.legs; rr(c, -3, 0, 6, 12, 3); c.fill();
+    c.fillStyle = '#ffffff'; rr(c, -3.5, 10, 9, 5, 2.5); c.fill();
+    c.restore();
+  });
+  // back arm
+  c.strokeStyle = h.suitDark; c.lineWidth = 5.5; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(-6, 2); c.lineTo(-11, 12); c.stroke();
+  // body
+  c.fillStyle = h.suit; rr(c, -11, -6, 22, 28, 9); c.fill();
+  c.fillStyle = '#ffffff'; rr(c, -11, 10, 22, 3.5, 1.5); c.fill();
+  c.fillStyle = h.badge; c.font = '10px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('★', 0, 3);
+  // front arm, waving forward
+  const wave = Math.sin(T * 2.2) * 0.25;
+  c.save(); c.translate(6, 0); c.rotate(-0.6 + wave);
+  c.strokeStyle = h.suit; c.lineWidth = 6; c.beginPath(); c.moveTo(0, 0); c.lineTo(13, 0); c.stroke();
+  c.fillStyle = '#ffdcc0'; c.beginPath(); c.arc(15, 0, 3.3, 0, 6.283); c.fill();
+  c.restore();
+  // neck ring
+  c.fillStyle = '#c4cee0'; rr(c, -9, -9, 18, 5, 2.5); c.fill();
+  // pigtails sit behind the head
+  if (h.style === 'pigtails') {
+    const pt = Math.sin(T * 4) * 0.2;
+    [[-1, pt], [1, -pt]].forEach(([side, a]) => {
+      c.save(); c.translate(side * 13, -25); c.rotate(side * (0.5 + a));
+      c.fillStyle = h.hair; c.strokeStyle = h.hairEdge; c.lineWidth = 1.2;
+      c.beginPath(); c.ellipse(side * 2, 8, 5, 9.5, 0, 0, 6.283); c.fill(); c.stroke();
+      c.fillStyle = '#ff5c9e'; c.beginPath(); c.arc(0, 0, 2.6, 0, 6.283); c.fill();
+      c.restore();
+    });
+  }
+  // head + ears
+  c.fillStyle = '#ffdcc0';
+  if (h.style !== 'pigtails') { c.beginPath(); c.arc(-13, -20, 3, 0, 6.283); c.arc(13, -20, 3, 0, 6.283); c.fill(); }
+  c.beginPath(); c.arc(0, -22, 13, 0, 6.283); c.fill();
+  drawHair(c, h);
+  if (h.style === 'pigtails') { c.fillStyle = '#ff5c9e'; c.font = '7px sans-serif'; c.fillText('★', 8, -31); }
+  // face
+  const blink = (T % 4) > 3.85;
+  c.fillStyle = '#3a2a5a';
+  if (blink) { c.fillRect(-6.5, -21, 4, 1.2); c.fillRect(2.5, -21, 4, 1.2); }
+  else {
+    c.beginPath(); c.arc(-4.5, -20.5, 2.1, 0, 6.283); c.arc(4.5, -20.5, 2.1, 0, 6.283); c.fill();
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(-3.8, -21.3, 0.7, 0, 6.283); c.arc(5.2, -21.3, 0.7, 0, 6.283); c.fill();
+  }
+  c.fillStyle = h.style === 'pigtails' ? 'rgba(255,110,150,0.45)' : 'rgba(255,120,120,0.3)';
+  c.beginPath(); c.arc(-8, -16, 2.4, 0, 6.283); c.arc(8, -16, 2.4, 0, 6.283); c.fill();
+  c.strokeStyle = '#b8456e'; c.lineWidth = 1.4;
+  c.beginPath(); c.arc(0, -17.5, 3.5, 0.15 * Math.PI, 0.85 * Math.PI); c.stroke();
+  // glass helmet
+  c.fillStyle = 'rgba(180,220,255,0.13)'; c.strokeStyle = 'rgba(255,255,255,0.7)'; c.lineWidth = 1.8;
+  c.beginPath(); c.arc(0, -22, 23, 0, 6.283); c.fill(); c.stroke();
+  c.strokeStyle = 'rgba(255,255,255,0.65)'; c.lineWidth = 2.5;
+  c.beginPath(); c.arc(0, -22, 19, 1.15 * Math.PI, 1.4 * Math.PI); c.stroke();
+  c.restore();
+}
+
+/* ---------- main loop ---------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt;
+  const { targetMid, sceneH } = layout();
+  midY += (targetMid - midY) * Math.min(1, dt * 4);
+
+  // move the astronaut
+  const tgt = pilotTarget();
+  const idleX = Math.sin(T * 0.7) * 3 * u, idleY = Math.sin(T * 1.4) * 2.2 * u;
+  const px = pilot.x;
+  pilot.x += (tgt.x - pilot.x) * Math.min(1, dt * 1.6);
+  pilot.y += (tgt.y - pilot.y) * Math.min(1, dt * 2.5);
+  const vx = (pilot.x - px) / Math.max(dt, 0.001);
+  pilot.thrust += (Math.min(1, Math.abs(vx) / (60 * u)) - pilot.thrust) * Math.min(1, dt * 5);
+  pilot.tilt += (Math.max(-0.35, Math.min(0.35, vx / (300 * u))) + Math.sin(T * 1.1) * 0.06 - pilot.tilt) * Math.min(1, dt * 4);
+  camX += (pilot.x - W * (W < 640 ? 0.4 : 0.33) - camX) * Math.min(1, dt * 2.2);
+
+  // background
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#050418'); bg.addColorStop(1, '#170b3a');
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  for (const n of NEBULAE) {
+    const nx = n.at * D * 0.6 - camX * 0.3, ny = sceneTop + n.y * sceneH;
+    const R = n.r * Math.max(W, H) * 0.5;
+    if (nx < -R || nx > W + R) continue;
+    const g = ctx.createRadialGradient(nx, ny, 0, nx, ny, R);
+    g.addColorStop(0, `hsla(${n.hue},80%,55%,0.13)`); g.addColorStop(1, `hsla(${n.hue},80%,40%,0)`);
+    ctx.fillStyle = g; ctx.fillRect(nx - R, ny - R, R * 2, R * 2);
+  }
+  for (const s of STARS) {
+    const sx = (((s.x * W * 1.5 - camX * s.f) % W) + W) % W;
+    ctx.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(T * 1.3 + s.p));
+    ctx.fillStyle = '#fff'; ctx.fillRect(sx, s.y * H, s.s, s.s);
+  }
+  ctx.globalAlpha = 1;
+
+  const sx = wx => wx - camX;
+  // asteroid + Kuiper belts
+  for (const a of ASTEROIDS) {
+    const x = sx(a.at * D), y = midY + a.y * sceneH * 0.8;
+    if (x < -20 || x > W + 20) continue;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(a.rot + T * 0.3 * (a.k - 1));
+    ctx.fillStyle = ['#8a7f75', '#a39586', '#6f665e'][a.k];
+    ctx.beginPath(); ctx.ellipse(0, 0, a.s * u * 1.3, a.s * u, 0, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+  for (const k of KUIPER) {
+    const x = sx(k.at * D), y = midY + k.y * sceneH * 0.85;
+    if (x < -20 || x > W + 20) continue;
+    ctx.fillStyle = 'rgba(190,220,255,0.55)';
+    ctx.beginPath(); ctx.ellipse(x, y, k.s * u, k.s * u * 0.7, k.rot, 0, 6.283); ctx.fill();
+  }
+
+  // inner solar system (scenery)
+  for (const [key, at] of INNER) {
+    const x = sx(at * D), r = BODIES[key].r * u;
+    if (x < -r * 3 || x > W + r * 3) continue;
+    drawPlanet(ctx, key, x, midY, r, T);
+  }
+  // journey planets
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  JOURNEY.forEach((key, i) => {
+    const b = BODIES[key], r = b.r * u, x = sx(i * D);
+    if (x < -r * 3 || x > W + r * 3) return;
+    drawPlanet(ctx, key, x, midY, r, T);
+    if (key === 'makemake' && state.won) drawFlag(x + r * 0.35, midY - r * 0.9, Math.max(14, r * 0.9));
+    const ly = midY + r * (b.ring ? 0.9 + b.ring * 0.25 : 1) + 10;
+    ctx.fillStyle = '#fff'; ctx.font = `800 ${Math.round(Math.max(14, u * 3.6))}px "Baloo 2", sans-serif`;
+    ctx.fillText(b.name, x, ly);
+    if (b.dwarf) {
+      ctx.fillStyle = '#7ff3e4'; ctx.font = `700 ${Math.round(Math.max(11, u * 2.5))}px "Baloo 2", sans-serif`;
+      ctx.fillText('dwarf planet', x, ly + Math.max(16, u * 4));
+    }
+  });
+
+  // sparkle trail
+  const s = u * 0.28;
+  const lx = sx(pilot.x) + idleX, ly = pilot.y + idleY;
+  if (Math.random() < 0.35 + pilot.thrust) {
+    const ang = pilot.tilt;
+    const ox = -19 * s, oy = 26 * s;
+    trail.push({ x: lx + ox * Math.cos(ang) - oy * Math.sin(ang) + camX, y: ly + ox * Math.sin(ang) + oy * Math.cos(ang),
+                 vx: -30 - Math.random() * 40, vy: 20 + Math.random() * 30, life: 1, hue: [50, 330, 190][Math.floor(Math.random() * 3)] });
+  }
+  for (let i = trail.length - 1; i >= 0; i--) {
+    const p = trail[i]; p.life -= dt * 1.2; p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.life <= 0) { trail.splice(i, 1); continue; }
+    ctx.globalAlpha = p.life; ctx.fillStyle = `hsl(${p.hue},100%,75%)`;
+    const ps = (1.5 + p.life * 2.5) * (u / 4);
+    ctx.save(); ctx.translate(sx(p.x), p.y); ctx.rotate(T * 3 + i);
+    ctx.fillRect(-ps / 2, -ps / 2, ps, ps); ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+
+  drawHero(ctx, state.hero, lx, ly, s, pilot.thrust, pilot.tilt);
+  drawPreviews();
+
+  // confetti
+  for (let i = confetti.length - 1; i >= 0; i--) {
+    const p = confetti[i]; p.vy += 260 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.r += p.vr * dt;
+    if (p.y > H + 20) { confetti.splice(i, 1); continue; }
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-4, -7, 8, 14); ctx.restore();
+  }
+  requestAnimationFrame(frame);
+}
+
+function burst(n = 120) {
+  const cols = ['#ff7eb6', '#ffd23f', '#3ee08f', '#7ad7ff', '#b38cff', '#ff9a4d'];
+  for (let i = 0; i < n; i++) {
+    confetti.push({ x: W / 2 + (Math.random() - 0.5) * W * 0.6, y: -20 - Math.random() * H * 0.4,
+      vx: (Math.random() - 0.5) * 220, vy: Math.random() * 120, r: Math.random() * 6, vr: (Math.random() - 0.5) * 10,
+      c: cols[i % cols.length] });
+  }
+}
+
+/* =========================================================
+   UI
+   ========================================================= */
+const ui = {
+  panel: $('#panel'), boxes: $('#boxes'), picture: $('#picture'), prompt: $('#prompt'), bubble: $('#bubble'),
+  map: $('#map'), stars: $('#starCount'), kbd: $('#kbd')
+};
+
+function renderMap() {
+  ui.map.innerHTML = '';
+  JOURNEY.forEach((key, i) => {
+    const b = BODIES[key];
+    const el = document.createElement('div');
+    el.className = 'stop' + (b.dwarf ? ' dwarf' : '') + (i < state.leg || state.won ? ' done' : '') + (i === state.leg && !state.won ? ' here' : '');
+    if (state.won && i === LEGS) el.className += ' here';
+    el.innerHTML = `<div class="dot" style="background:${b.dot}"></div><div class="lbl">${b.name}${key === 'makemake' ? ' 🏁' : ''}</div>${b.dwarf ? '<div class="tag">dwarf</div>' : ''}`;
+    ui.map.appendChild(el);
+  });
+  ui.stars.textContent = '⭐ ' + state.stars;
+}
+
+function say(text) { ui.bubble.textContent = text; }
+
+function buildKeyboard() {
+  const rows = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'];
+  ui.kbd.innerHTML = '';
+  rows.forEach(r => {
+    const row = document.createElement('div'); row.className = 'krow';
+    [...r].forEach(ch => {
+      const k = document.createElement('button'); k.className = 'key'; k.textContent = ch; k.dataset.k = ch.toLowerCase();
+      row.appendChild(k);
+    });
+    ui.kbd.appendChild(row);
+  });
+  ui.kbd.addEventListener('pointerdown', e => {
+    const k = e.target.closest('.key'); if (!k) return;
+    e.preventDefault();
+    typeLetter(k.dataset.k);
+  });
+}
+let kbdOn = true;
+try { const v = localStorage.getItem('layla-kbd'); if (v !== null) kbdOn = v === '1'; } catch (e) {}
+function setKbd(on) {
+  kbdOn = on; ui.kbd.classList.toggle('hidden', !on);
+  try { localStorage.setItem('layla-kbd', on ? '1' : '0'); } catch (e) {}
+}
+
+function renderBoxes() {
+  const w = cur.word;
+  ui.boxes.style.setProperty('--n', w.length);
+  ui.boxes.innerHTML = '';
+  for (let i = 0; i < w.length; i++) {
+    const b = document.createElement('div');
+    b.className = 'box';
+    b.textContent = w[i];
+    if (i < cur.pos) b.classList.add('good');
+    else b.classList.add('ghost');
+    if (i === cur.pos && !cur.locked) b.classList.add('next');
+    ui.boxes.appendChild(b);
+  }
+  // light up the key to press next on the on-screen keyboard
+  ui.kbd.querySelectorAll('.key.target').forEach(k => k.classList.remove('target'));
+  if (!cur.locked && cur.pos < w.length) {
+    const k = ui.kbd.querySelector(`[data-k="${w[cur.pos]}"]`);
+    if (k) k.classList.add('target');
+  }
+}
+
+function pickWord() {
+  const tier = TIERS[state.level][Math.min(state.leg, LEGS - 1)];
+  let pool = WORDS[tier].filter(([w]) => !used.has(w));
+  if (!pool.length) { WORDS[tier].forEach(([w]) => used.delete(w)); pool = WORDS[tier]; }
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  used.add(pick[0]);
+  return pick;
+}
+
+function startLeg() {
+  state.mode = 'spell'; state.wordIdx = 0;
+  ui.panel.classList.remove('hidden');
+  renderMap();
+  const nextKey = JOURNEY[state.leg + 1], next = BODIES[nextKey];
+  const [word, emoji] = pickWord();
+  cur = { word, emoji, pos: 0, mistakes: 0, locked: false, lastNudge: 0 };
+  ui.picture.textContent = emoji;
+  ui.picture.classList.remove('pop'); void ui.picture.offsetWidth; ui.picture.classList.add('pop');
+  ui.prompt.innerHTML = `Type the word to fly to <b>${next.name}</b>!`;
+  say(`Next stop: ${next.name}${next.dwarf ? ' (a dwarf planet!)' : ''} 🚀`);
+  renderBoxes();
+  talk([L.next(nextKey), L.ask(word)]);
+}
+
+function typeLetter(ch) {
+  if (state.mode !== 'spell' || !cur || cur.locked) return;
+  audio();
+  const want = cur.word[cur.pos];
+  if (ch === want) {
+    sfx.key(cur.pos);
+    cur.pos++;
+    renderBoxes();
+    if (cur.pos >= cur.word.length) success();
+    return;
+  }
+  // wrong key: wobble the box and say the letter to look for
+  cur.mistakes++;
+  sfx.bad();
+  const box = ui.boxes.children[cur.pos];
+  if (box) { box.classList.remove('bad'); void box.offsetWidth; box.classList.add('bad'); setTimeout(() => box.classList.remove('bad'), 450); }
+  say(`Look for the ${want.toUpperCase()} key!`);
+  const now = performance.now();
+  if (now - cur.lastNudge > 1200) { cur.lastNudge = now; talk([L.letter(want)]); }
+}
+
+function success() {
+  cur.locked = true;
+  renderBoxes();
+  [...ui.boxes.children].forEach((b, i) => { b.style.animationDelay = i * 0.06 + 's'; b.classList.add('win'); });
+  sfx.good();
+  const perfect = cur.mistakes === 0;
+  if (perfect) state.stars++;
+  const pi = Math.floor(Math.random() * PRAISE.length);
+  say(perfect ? `${PRAISE[pi]} ⭐ +1 star` : PRAISE[pi]);
+  talk([L.word(cur.word), L.praise(pi)]);
+  renderMap();
+  setTimeout(() => {
+    state.wordIdx = 1;
+    sfx.whoosh();
+    save();
+    ui.panel.classList.add('hidden');
+    say('Zoooom! 🚀');
+    state.mode = 'flying';
+    setTimeout(arrive, 2600);
+  }, 1600);
+}
+
+function arrive() {
+  const key = JOURNEY[state.leg + 1], b = BODIES[key];
+  if (key === 'makemake') return win();
+  state.mode = 'arrive';
+  sfx.arrive();
+  say(`Welcome to ${b.name}!`);
+  const pc = $('#arrivePlanet').getContext('2d');
+  pc.clearRect(0, 0, 300, 300);
+  const pr = key === 'saturn' ? 55 : key === 'haumea' ? 62 : 95;
+  drawPlanet(pc, key, 150, 150, pr, T);
+  $('#arriveBadge').textContent = b.type;
+  $('#arriveBadge').className = 'badge' + (b.dwarf ? ' dwarf' : '');
+  $('#arriveName').textContent = b.name;
+  $('#arriveFact').textContent = b.fact;
+  $('#arriveNext').textContent = `🚀 Next stop: ${BODIES[JOURNEY[state.leg + 2]].name}…`;
+  $('#arriveScreen').classList.remove('hidden');
+  // fly on once the fact has been read (with a safety timer in case audio stalls)
+  const leg = state.leg;
+  const go = () => { if (state.mode === 'arrive' && state.leg === leg) leaveArrival(); };
+  talk([L.welcome(key)]).then(() => setTimeout(go, 900));
+  setTimeout(go, 20000);
+}
+function leaveArrival() {
+  if (state.mode !== 'arrive') return;
+  $('#arriveScreen').classList.add('hidden');
+  state.leg++;
+  save();
+  startLeg();
+}
+
+function win() {
+  state.mode = 'win'; state.won = true; state.leg = LEGS; state.wordIdx = 0;
+  ui.panel.classList.add('hidden');
+  clearSave();
+  renderMap();
+  const hn = HEROES[state.hero].name;
+  say(`${hn} made it to Makemake! 🏁`);
+  sfx.win(); burst(160); setTimeout(() => burst(120), 900);
+  $('#winStars').textContent = `⭐ ${state.stars} of ${LEGS} perfect words`;
+  prepareReward(); // start loading the player right away
+  setTimeout(() => $('#winScreen').classList.remove('hidden'), 1400);
+  // play once the card is up and the celebration line has been read (safety timer in case audio stalls)
+  let started = false;
+  const go = () => { if (!started && state.mode === 'win') { started = true; playReward(); } };
+  const cheer = talk([[`win_${state.hero}`, `Hooray! ${hn} made it all the way to Makemake! ${BODIES.makemake.fact} You are a super typer!`]]);
+  Promise.all([cheer, new Promise(r => setTimeout(r, 1600))]).then(go);
+  setTimeout(go, 16000);
+}
+
+/* ---------- reward video ----------
+   YouTube refuses to play embeds on file:// pages (no referrer), so there we offer a button
+   that opens the video on YouTube instead. Served over http (Play.command) it plays inline. */
+let ytApi = null, ytPlayer = null, ytReady = null;
+const canEmbed = location.protocol.startsWith('http');
+function showVideoFallback() {
+  $('#videoWrap').style.display = 'none';
+  $('#videoFile').style.display = '';
+}
+function loadYT() {
+  if (!ytApi) ytApi = new Promise((res, rej) => {
+    if (window.YT && window.YT.Player) return res(window.YT);
+    window.onYouTubeIframeAPIReady = () => res(window.YT);
+    const sc = document.createElement('script');
+    sc.src = 'https://www.youtube.com/iframe_api'; sc.onerror = rej;
+    document.head.appendChild(sc);
+  });
+  return ytApi;
+}
+function prepareReward() {
+  $('#unmuteBtn').style.display = 'none';
+  if (!canEmbed) return showVideoFallback();
+  $('#videoWrap').style.display = ''; $('#videoFile').style.display = 'none';
+  if (ytReady) return;
+  ytReady = loadYT().then(YT => new Promise(res => {
+    ytPlayer = new YT.Player('rewardVideo', {
+      videoId: REWARD_VIDEO,
+      playerVars: { playsinline: 1, rel: 0, modestbranding: 1, origin: location.origin },
+      events: { onReady: () => res(ytPlayer), onError: () => { showVideoFallback(); res(null); } }
+    });
+  })).catch(() => { showVideoFallback(); return null; });
+}
+function playReward() {
+  if (!canEmbed || !ytReady) return;
+  ytReady.then(p => {
+    if (!p || state.mode !== 'win') return;
+    hush();
+    p.unMute(); p.playVideo();
+    // Browsers may block autoplay with sound: keep checking, fall back to muted autoplay,
+    // and if even that is blocked, show a big button (a tap always works).
+    let tries = 0;
+    const check = () => {
+      if (state.mode !== 'win') return;
+      const playing = p.getPlayerState() === YT.PlayerState.PLAYING;
+      if (playing && !p.isMuted()) return;
+      tries++;
+      if (tries === 3 && !playing) { p.mute(); p.playVideo(); }
+      if (tries >= 3) {
+        const btn = $('#unmuteBtn');
+        btn.textContent = playing ? '🔊 Tap for sound' : '▶ Tap to play';
+        btn.style.display = '';
+        if (playing) return;
+      }
+      if (tries < 12) setTimeout(check, 500);
+    };
+    setTimeout(check, 500);
+  });
+}
+function stopReward() {
+  if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
+}
+
+function begin(resume) {
+  audio();
+  const saved = resume ? load() : null;
+  state.leg = saved ? Math.min(saved.leg, LEGS - 1) : 0;
+  state.stars = saved ? saved.stars : 0;
+  if (saved && saved.level) state.level = saved.level;
+  if (saved && HEROES[saved.hero]) setHero(saved.hero);
+  state.wordIdx = 0; state.won = false;
+  used.clear();
+  $('#startScreen').classList.add('hidden');
+  $('#winScreen').classList.add('hidden');
+  startLeg();
+}
+
+function setHero(key) {
+  state.hero = key;
+  const h = HEROES[key];
+  document.querySelectorAll('.heroName').forEach(el => el.textContent = h.name);
+  document.querySelectorAll('.heroPronoun').forEach(el => el.textContent = h.pronoun);
+  document.querySelectorAll('#heroes .hero').forEach(b => b.classList.toggle('on', b.dataset.hero === key));
+  say(`Hi! I'm ${h.name}! Let's fly to Makemake! 👋`);
+  try { localStorage.setItem('layla-hero', key); } catch (e) {}
+}
+// little animated portraits on the start screen
+function drawPreviews() {
+  if (state.mode !== 'start') return;
+  document.querySelectorAll('#heroes .hero').forEach(b => {
+    const cv = b.querySelector('canvas'), c = cv.getContext('2d');
+    c.clearRect(0, 0, cv.width, cv.height);
+    drawHero(c, b.dataset.hero, 102, 116 + Math.sin(T * 2 + cv.width) * 3, 2.1, 0.2, -0.05);
+  });
+}
+
+/* ---------- events ---------- */
+const hearWord = () => cur && state.mode === 'spell' && talk([L.word(cur.word)]);
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (state.mode === 'start' && e.key === 'Enter') {
+    // a focused Blast off / Keep going button handles Enter itself
+    if (e.target.closest && e.target.closest('#startBtn, #continueBtn')) return;
+    e.preventDefault(); $('#startBtn').click(); return;
+  }
+  if (state.mode === 'start' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault();
+    const keys = Object.keys(HEROES);
+    const i = (keys.indexOf(state.hero) + (e.key === 'ArrowRight' ? 1 : -1) + keys.length) % keys.length;
+    $(`#heroes [data-hero="${keys[i]}"]`).click();
+    return;
+  }
+  if (state.mode === 'arrive' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); leaveArrival(); return; }
+  if (state.mode !== 'spell') return;
+  if (/^[a-zA-Z]$/.test(e.key)) {
+    e.preventDefault(); typeLetter(e.key.toLowerCase());
+    const k = ui.kbd.querySelector(`[data-k="${e.key.toLowerCase()}"]`);
+    if (k) { k.classList.add('press'); setTimeout(() => k.classList.remove('press'), 120); }
+  } else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); hearWord(); }
+});
+
+$('#hearBtn').addEventListener('click', hearWord);
+$('#picture').addEventListener('click', hearWord);
+$('#againBtn').addEventListener('click', () => { stopReward(); begin(false); });
+$('#unmuteBtn').addEventListener('click', () => {
+  if (ytPlayer) { ytPlayer.unMute(); ytPlayer.setVolume(100); ytPlayer.playVideo(); }
+  $('#unmuteBtn').style.display = 'none';
+});
+$('#kbdToggle').addEventListener('click', () => setKbd(!kbdOn));
+$('#muteBtn').addEventListener('click', () => { muted = !muted; $('#muteBtn').textContent = muted ? '🔕' : '🔔'; });
+$('#heroes').addEventListener('click', e => {
+  const b = e.target.closest('.hero'); if (!b) return;
+  audio(); setHero(b.dataset.hero);
+  talk([[`hi_${b.dataset.hero}`, `Hi! I'm ${HEROES[b.dataset.hero].name}!`]]);
+});
+$('#levels').addEventListener('click', e => {
+  const c = e.target.closest('.chip'); if (!c) return;
+  state.level = c.dataset.level;
+  document.querySelectorAll('#levels .chip').forEach(x => x.classList.toggle('on', x === c));
+});
+$('#startBtn').addEventListener('click', () => { clearSave(); begin(false); });
+$('#continueBtn').addEventListener('click', () => begin(true));
+
+/* ---------- boot ---------- */
+buildKeyboard();
+setKbd(kbdOn);
+const saved = load();
+if (saved && saved.leg > 0 && saved.leg < LEGS) {
+  const cb = $('#continueBtn');
+  cb.style.display = ''; cb.textContent = `Keep going (to ${BODIES[JOURNEY[saved.leg + 1]].name})`;
+  if (saved.level) {
+    state.level = saved.level;
+    document.querySelectorAll('#levels .chip').forEach(x => x.classList.toggle('on', x.dataset.level === saved.level));
+  }
+}
+if (!canSpeak) $('#noSpeech').style.display = '';
+renderMap();
+let savedHero = 'layla';
+try { savedHero = localStorage.getItem('layla-hero') || (saved && saved.hero) || 'layla'; } catch (e) {}
+setHero(HEROES[savedHero] ? savedHero : 'layla');
+layout();
+const t0 = pilotTarget(); pilot.x = t0.x; pilot.y = t0.y; camX = pilot.x - W * 0.33;
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
