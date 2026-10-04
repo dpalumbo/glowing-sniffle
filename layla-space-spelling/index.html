@@ -246,6 +246,7 @@
     <h2 id="arriveName">Mars</h2>
     <p id="arriveFact"></p>
     <p class="sub" id="arriveNext">🚀 Next stop: Ceres…</p>
+    <div class="actions" id="nextPlanetWrap" style="display:none"><button class="btn big" id="nextPlanetBtn">Next planet 🚀</button></div>
   </div>
 </div>
 
@@ -402,6 +403,7 @@ const sfx = {
    Every line is pre-recorded in audio/<id>.mp3 (made by tools/make_voice.py).
    If a clip is missing or can't play, fall back to the browser's own voice. */
 const canSpeak = 'speechSynthesis' in window;
+const isTouch = matchMedia('(pointer: coarse)').matches || /iPhone|iPad|Android/i.test(navigator.userAgent);
 let voice = null;
 function pickVoice() {
   if (!canSpeak) return;
@@ -414,34 +416,62 @@ if (canSpeak) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 function ttsLine(text, rate) {
   return new Promise(res => {
     if (!canSpeak) return res();
+    let done = false;
+    const fin = () => { if (!done) { done = true; clearTimeout(t); res(); } };
     const u = new SpeechSynthesisUtterance(text);
     if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-US';
-    u.rate = rate; u.pitch = 1.1; u.onend = u.onerror = res;
+    u.rate = rate; u.pitch = 1.1; u.onend = u.onerror = fin;
+    // some mobile browsers never report the end of speech, so don't wait forever
+    const t = setTimeout(fin, 2500 + text.length * 90 / rate);
     speechSynthesis.speak(u);
   });
 }
 
-let talkId = 0, clip = null;
+// One shared <audio> element for every clip: phones only let a page play sound on an element
+// that was first started from a tap, so it gets unlocked with a silent clip on the first touch.
+const SILENCE = 'data:audio/mpeg;base64,SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYyLjMuMTAwAAAAAAAAAAAAAAD/83DAAAAAAAAAAAAASW5mbwAAAA8AAAAIAAAD+gBHR0dHR0dHR0dHR0diYmJiYmJiYmJiYmJ8fHx8fHx8fHx8fHx8lpaWlpaWlpaWlpaWsbGxsbGxsbGxsbGxscvLy8vLy8vLy8vLy+Xl5eXl5eXl5eXl5eX///////////////8AAAAATGF2YzYyLjExAAAAAAAAAAAAAAAAJALUAAAAAAAAA/rLK5ZOAAAAAAAAAAAAAAAAAP/zQMQAAAADSAAAAABMQU1FMy4xMDBVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NCxFsAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NAxKQAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/80LEowAAA0gAAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/80DEpAAAA0gAAAAAVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQsSjAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NCxKMAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
+const voiceEl = new Audio();
+voiceEl.preload = 'auto';
+let unlocked = false;
+function unlockAudio() {
+  if (unlocked) return;
+  unlocked = true;
+  audio(); // wakes the sound-effects context too
+  if (!voiceEl.src) { voiceEl.src = SILENCE; voiceEl.play().catch(() => {}); }
+}
+['pointerdown', 'touchend', 'keydown'].forEach(ev => addEventListener(ev, unlockAudio, true));
+
+let talkId = 0, endCurrent = null;
 function hush() {
   talkId++;
-  if (clip) { clip.pause(); clip = null; }
+  voiceEl.pause();
+  if (endCurrent) endCurrent(); // let anything waiting on the cut-off line carry on
   if (canSpeak) speechSynthesis.cancel();
 }
 function playLine(id, text, rate, token) {
   return new Promise(res => {
-    const a = new Audio(`audio/${id}.mp3`);
-    let done = false, fellBack = false;
-    const finish = () => { if (!done) { done = true; res(); } };
+    let done = false, fellBack = false, watch;
+    const detach = () => { voiceEl.onended = voiceEl.onerror = voiceEl.onplaying = null; clearTimeout(watch); };
+    const finish = () => { if (done) return; done = true; detach(); if (endCurrent === finish) endCurrent = null; res(); };
     // the error event and the rejected play() promise can both fire; only fall back once
     const fallback = () => {
       if (fellBack || done) return;
-      fellBack = true;
+      fellBack = true; detach(); voiceEl.pause();
       if (token === talkId) ttsLine(text, rate).then(finish); else finish();
     };
-    a.onended = finish;
-    a.onerror = fallback;
-    clip = a;
-    a.play().catch(fallback);
+    endCurrent = finish;
+    voiceEl.onended = finish;
+    voiceEl.onerror = fallback;
+    voiceEl.onplaying = () => {
+      clearTimeout(watch);
+      // 'ended' can go missing if the phone interrupts playback
+      watch = setTimeout(finish, ((isFinite(voiceEl.duration) ? voiceEl.duration : 12) + 2) * 1000);
+    };
+    // a blocked play() on some phones never starts and never fails; give it 4s
+    watch = setTimeout(fallback, 4000);
+    voiceEl.src = `audio/${id}.mp3`;
+    const pr = voiceEl.play();
+    if (pr) pr.catch(fallback);
   });
 }
 // talk([[clipId, fallbackText], ...]) plays lines one after another, cutting off anything already playing
@@ -1060,6 +1090,8 @@ function arrive() {
   $('#arriveName').textContent = b.name;
   $('#arriveFact').textContent = b.fact;
   $('#arriveNext').textContent = `🚀 Next stop: ${BODIES[JOURNEY[state.leg + 2]].name}…`;
+  // phones often can't play the voice, so give them a button instead of waiting on it
+  $('#nextPlanetWrap').style.display = isTouch ? '' : 'none';
   $('#arriveScreen').classList.remove('hidden');
   // fly on once the fact has been read (with a safety timer in case audio stalls)
   const leg = state.leg;
@@ -1216,6 +1248,7 @@ document.addEventListener('keydown', e => {
 
 $('#hearBtn').addEventListener('click', hearWord);
 $('#picture').addEventListener('click', hearWord);
+$('#nextPlanetBtn').addEventListener('click', leaveArrival);
 $('#againBtn').addEventListener('click', () => { stopReward(); begin(false); });
 $('#unmuteBtn').addEventListener('click', () => {
   if (ytPlayer) { ytPlayer.unMute(); ytPlayer.setVolume(100); ytPlayer.playVideo(); }
